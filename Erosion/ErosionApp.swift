@@ -54,6 +54,11 @@ struct ErosionApp: App {
                         Label("File Browser", systemImage: "folder")
                     }
                     .id(2)
+                CacheCleanerView()
+                    .tabItem {
+                        Label("Cleaner", systemImage: "trash")
+                    }
+                    .id(3)
             }
             .environmentObject(mgr)
             .onAppear {
