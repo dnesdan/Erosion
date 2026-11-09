@@ -78,6 +78,7 @@ static NSString *er_identifier(int fd) {
 
 @interface ERCacheCleaner () {
     dispatch_queue_t _queue;
+    NSLock *_mutationLock;
     atomic_bool _cancelled;
     BOOL _busy;
     double _deadline;
@@ -91,12 +92,18 @@ static NSString *er_identifier(int fd) {
 - (instancetype)init {
     if ((self = [super init])) {
         _queue = dispatch_queue_create("Erosion.CacheCleaner", DISPATCH_QUEUE_SERIAL);
+        _mutationLock = [NSLock new];
         atomic_init(&_cancelled, false);
     }
     return self;
 }
 
-- (void)cancel { atomic_store(&_cancelled, true); }
+- (void)cancel {
+    // Once this returns, no further unlink can start in the current operation.
+    [_mutationLock lock];
+    atomic_store(&_cancelled, true);
+    [_mutationLock unlock];
+}
 
 - (void)note:(NSString *)message {
     if (_result.messages.count < 20) _result.messages = [_result.messages arrayByAddingObject:message];
@@ -271,11 +278,18 @@ static NSString *er_identifier(int fd) {
                 [self removeSnapshot:child fd:childFD];
             else _result.skippedFiles += child.files;
             close(childFD);
-        } else if (er_same_file(child.identity, current) && ![self stopped] && unlinkat(fd, name, 0) == 0) {
-            _result.removedFiles++;
-            _result.removedBytes += child.bytes;
         } else {
-            _result.skippedFiles++;
+            [_mutationLock lock];
+            BOOL removed = ![self stopped] &&
+                fstatat(fd, name, &current, AT_SYMLINK_NOFOLLOW) == 0 &&
+                er_same_file(child.identity, current) && unlinkat(fd, name, 0) == 0;
+            [_mutationLock unlock];
+            if (removed) {
+                _result.removedFiles++;
+                _result.removedBytes += child.bytes;
+            } else {
+                _result.skippedFiles++;
+            }
         }
     }
     // Keep directories, links and files created after the scan.
@@ -284,13 +298,18 @@ static NSString *er_identifier(int fd) {
 - (void)cleanEntry:(ERCacheEntry *)item group:(NSString *)group {
     if (![self validContainer:item.containerPath] || ![self allowedIdentifier:item.identifier] || [self stopped]) return;
     int64_t handle = [self acquire:item.containerPath group:group];
-    if (handle < 0) { [self note:[NSString stringWithFormat:@"Access lost: %@.", item.identifier]]; return; }
+    if (handle < 0) {
+        _result.skippedFiles += item.fileCount;
+        [self note:[NSString stringWithFormat:@"Access lost: %@.", item.identifier]];
+        return;
+    }
     int fd = -1;
     @try {
         fd = open(item.containerPath.fileSystemRepresentation, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
         struct stat identity;
         if (fd < 0 || fstat(fd, &identity) != 0 || !er_same_object(item.identity, identity) ||
             ![er_identifier(fd) isEqualToString:item.identifier]) {
+            _result.skippedFiles += item.fileCount;
             [self note:[NSString stringWithFormat:@"Container changed: %@.", item.identifier]];
             return;
         }
@@ -330,6 +349,7 @@ static NSString *er_identifier(int fd) {
             work();
             [self stopped];
             ERCacheResult *result = self->_result;
+            self->_result = nil;
             @synchronized (self) { self->_busy = NO; }
             dispatch_async(dispatch_get_main_queue(), ^{ completion(result); });
         }
