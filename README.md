@@ -11,6 +11,15 @@
   <a href="https://jailbreak.party"><img alt="Static Badge" src="https://img.shields.io/badge/jailbreak.party-blue?style=flat-square&label=%20&color=3868DB"></a>
 </div>
 
+### Cache Cleaner (this fork)
+Open **Cleaner**, scan, select apps, then confirm. `tmp` is opt-in. Close selected apps first: running apps cannot be detected, and cached downloads or drafts may be lost.
+
+Only scanned regular files in app `Library/Caches` and optional `tmp` are eligible. System apps, links, changed files and new files are skipped; directories are kept. Checks are best-effort, not protection against a concurrently writing app. Scans are bounded and may miss apps; reported sizes are logical. Scan again after cleaning.
+
+Scanning does not remove target files. The existing `worse_query` grant still resets Erosion's own App Group cache. Inspired by [Cyanide](https://github.com/kolbicz/Cyanide); the cleaner is a separate implementation without its kernel chain.
+
+Local tests: `./scripts/test-cleaner.sh` on macOS. They use temporary fixtures, not the exploit. Verify access and cleaning on a backed-up device before regular use.
+
 ### Before you begin...
 - Please create a backup of your device before usage! While Erosion has been extensively tested, there is still a possibility that you could lose your data by using this tool.
 - If a tweak doesn't work how you were expecting, **do not open an issue or ask for support regarding it!** All tweaks are reliant on your device cooperating properly, and in some cases this can even involve Apple's servers. We'll be unable to help you.

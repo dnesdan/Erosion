@@ -11,6 +11,7 @@
 #import "Exploits/bad_query.h"
 #import "Exploits/worse_query.h"
 #import "Exploits/pathleak.h"
+#import "Cleaner/CacheCleaner.h"
 #import <Foundation/Foundation.h>
 #import <CoreFoundation/CoreFoundation.h>
 
